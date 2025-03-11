@@ -4,12 +4,22 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <pthread.h>
+<<<<<<< HEAD
 #include <tinyxml2.h>
 
 #define WS_DISCOVERY_ADDRESS "239.255.255.250"
 // #define WS_TEMPORARY_DISCOVERY_ADDRESS "192.168.97.14"
 // #define WS_TEMPORARY_DISCOVERY_PORT 10001
 #define WS_DISCOVERY_PORT 3702
+=======
+#include <libxml/parser.h>
+#include <libxml/tree.h>
+
+// #define WS_DISCOVERY_ADDRESS "239.255.255.250"
+// #define WS_DISCOVERY_PORT 3702
+#define WS_DISCOVERY_ADDRESS "192.168.2.100"
+#define WS_DISCOVERY_PORT 10000
+>>>>>>> db55bda (adding new code : for the onvif discovery service)
 #define BUFFER_SIZE 4096
 
 typedef struct Device {
@@ -39,11 +49,48 @@ const char *probe_message =
 void add_device(const char *ip, const char *service_url) {
     pthread_mutex_lock(&list_mutex);
     Device *new_device = (Device *)malloc(sizeof(Device));
+    if (!new_device) {
+        fprintf(stderr, "Memory allocation failed\n");
+        pthread_mutex_unlock(&list_mutex);
+        return;
+    }
     strncpy(new_device->ip, ip, INET_ADDRSTRLEN);
     strncpy(new_device->service_url, service_url, 256);
     new_device->next = device_list;
     device_list = new_device;
     pthread_mutex_unlock(&list_mutex);
+}
+
+void extract_service_url(const char *response, char *service_url) {
+    xmlDocPtr doc = xmlReadMemory(response, strlen(response), "noname.xml", NULL, 0);
+    if (doc == NULL) {
+        fprintf(stderr, "Failed to parse XML response\n");
+        strcpy(service_url, "Unknown");
+        return;
+    }
+
+    xmlNodePtr root = xmlDocGetRootElement(doc);
+    xmlNodePtr node = root;
+
+    // Recursively search for the <d:XAddrs> tag within the correct namespace
+    while (node) {
+        if (node->type == XML_ELEMENT_NODE && 
+            xmlStrcmp(node->name, (const xmlChar *)"XAddrs") == 0) {
+            
+            // Check if the node has a namespace prefix that needs to be accounted for
+            xmlChar *content = xmlNodeGetContent(node);
+            if (content) {
+                strncpy(service_url, (const char *)content, 255);
+                service_url[255] = '\0'; // Ensure null termination
+                xmlFree(content);
+                break;
+            }
+        }
+        node = node->next ? node->next : node->children;
+    }
+
+    xmlFreeDoc(doc);
+    xmlCleanupParser();
 }
 
 void *listen_for_responses(void *arg) {
@@ -60,7 +107,7 @@ void *listen_for_responses(void *arg) {
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
     server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    server_addr.sin_port = htons(0);
+    server_addr.sin_port = htons(WS_DISCOVERY_PORT);
 
     if (bind(sock, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
         perror("Bind failed");
@@ -76,22 +123,10 @@ void *listen_for_responses(void *arg) {
             buffer[recv_len] = '\0';
             char ip[INET_ADDRSTRLEN];
             inet_ntop(AF_INET, &client_addr.sin_addr, ip, sizeof(ip));
-
-            // Parse XML response
-            tinyxml2::XMLDocument doc;
-            doc.Parse(buffer);
-            tinyxml2::XMLElement *envelope = doc.FirstChildElement("s:Envelope");
-            if (envelope) {
-                tinyxml2::XMLElement *body = envelope->FirstChildElement("s:Body");
-                if (body) {
-                    tinyxml2::XMLElement *probe_match = body->FirstChildElement("d:ProbeMatches")->FirstChildElement("d:ProbeMatch");
-                    if (probe_match) {
-                        const char *service_url = probe_match->FirstChildElement("d:XAddrs")->GetText();
-                        add_device(ip, service_url ? service_url : "Unknown");
-                        printf("Discovered ONVIF Device: %s (%s)\n", ip, service_url);
-                    }
-                }
-            }
+            char service_url[256] = {0};
+            extract_service_url(buffer, service_url);
+            add_device(ip, service_url);
+            printf("Discovered ONVIF Device: %s (%s)\n", ip, service_url);
         }
     }
     close(sock);
@@ -151,5 +186,9 @@ int main() {
 
     pthread_cancel(listener_thread);
     pthread_join(listener_thread, NULL);
+<<<<<<< HEAD
+=======
+
+>>>>>>> db55bda (adding new code : for the onvif discovery service)
     return 0;
 }

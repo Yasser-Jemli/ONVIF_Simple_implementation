@@ -8,7 +8,14 @@ Here's a simple C implementation of an ONVIF device discovery service that runs 
     Stores the discovered devices in a list
 
 
+<<<<<<< HEAD
     compile the code main.c with gcc onvif_discovery.c -o onvif_discovery -lpthread -ltinyxml2
+=======
+    compile the code main.c with gcc onvif_discovery.c -o onvif_discovery -lpthread -lxml2 
+
+    gcc main.c -o onvif_discovery -lpthread -lxml2 -I/usr/include/libxml2
+
+>>>>>>> db55bda (adding new code : for the onvif discovery service)
     
 
 
@@ -21,3 +28,7 @@ the tool used for Camera ONVIF for simulation is --> https://www.happytimesoft.c
 
 
 
+<<<<<<< HEAD
+=======
+lib INSTALLATION : sudo apt install libxml2 libxml2-dev
+>>>>>>> db55bda (adding new code : for the onvif discovery service)
