@@ -4,22 +4,16 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <pthread.h>
-<<<<<<< HEAD
-#include <tinyxml2.h>
-
-#define WS_DISCOVERY_ADDRESS "239.255.255.250"
-// #define WS_TEMPORARY_DISCOVERY_ADDRESS "192.168.97.14"
-// #define WS_TEMPORARY_DISCOVERY_PORT 10001
-#define WS_DISCOVERY_PORT 3702
-=======
 #include <libxml/parser.h>
 #include <libxml/tree.h>
 
-// #define WS_DISCOVERY_ADDRESS "239.255.255.250"
-// #define WS_DISCOVERY_PORT 3702
-#define WS_DISCOVERY_ADDRESS "192.168.2.100"
-#define WS_DISCOVERY_PORT 10000
->>>>>>> db55bda (adding new code : for the onvif discovery service)
+#define WS_DISCOVERY_ADDRESS "239.255.255.250"
+#define WS_DISCOVERY_PORT 3702
+
+// #define WS_DISCOVERY_ADDRESS    "127.0.0.1"
+
+// #define WS_DISCOVERY_ADDRESS "192.168.23.14"
+// #define WS_DISCOVERY_PORT 8000
 #define BUFFER_SIZE 4096
 
 typedef struct Device {
@@ -31,20 +25,42 @@ typedef struct Device {
 Device *device_list = NULL;
 pthread_mutex_t list_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+// const char *probe_message =
+//     "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+//     "<s:Envelope xmlns:s=\"http://www.w3.org/2003/05/soap-envelope\" xmlns:a=\"http://schemas.xmlsoap.org/ws/2004/08/addressing\" xmlns:d=\"http://schemas.xmlsoap.org/ws/2005/04/discovery\">"
+//     "  <s:Header>"
+//     "    <a:Action>http://schemas.xmlsoap.org/ws/2005/04/discovery/Probe</a:Action>"
+//     "    <a:MessageID>uuid:12345678-1234-1234-1234-123456789012</a:MessageID>"
+//     "    <a:ReplyTo>"
+//     "      <a:Address>urn:schemas-xmlsoap-org:ws:2005:04:discovery</a:Address>"
+//     "    </a:ReplyTo>"
+//     "  </s:Header>"
+//     "  <s:Body>"
+//     "    <d:Probe/>"
+//     "  </s:Body>"
+//     "</s:Envelope>";
+
+
 const char *probe_message =
     "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
-    "<s:Envelope xmlns:s=\"http://www.w3.org/2003/05/soap-envelope\" xmlns:a=\"http://schemas.xmlsoap.org/ws/2004/08/addressing\" xmlns:d=\"http://schemas.xmlsoap.org/ws/2005/04/discovery\">"
-    "  <s:Header>"
-    "    <a:Action>http://schemas.xmlsoap.org/ws/2005/04/discovery/Probe</a:Action>"
-    "    <a:MessageID>uuid:12345678-1234-1234-1234-123456789012</a:MessageID>"
-    "    <a:ReplyTo>"
-    "      <a:Address>urn:schemas-xmlsoap-org:ws:2005:04:discovery</a:Address>"
-    "    </a:ReplyTo>"
-    "  </s:Header>"
-    "  <s:Body>"
-    "    <d:Probe/>"
-    "  </s:Body>"
-    "</s:Envelope>";
+    "<e:Envelope xmlns:e=\"http://www.w3.org/2003/05/soap-envelope\""
+    " xmlns:w=\"http://schemas.xmlsoap.org/ws/2004/08/addressing\""
+    " xmlns:d=\"http://schemas.xmlsoap.org/ws/2005/04/discovery\""
+    " xmlns:dn=\"http://www.onvif.org/ver10/network/wsdl\">"
+    "  <e:Header>"
+    "    <w:MessageID>uuid:84ede3de-7dec-11d0-c360-f01234567890</w:MessageID>"
+    "    <w:To e:mustUnderstand=\"true\">urn:schemas-xmlsoap-org:ws:2005:04:discovery</w:To>"
+    "    <w:Action e:mustUnderstand=\"true\">"
+    "      http://schemas.xmlsoap.org/ws/2005/04/discovery/Probe"
+    "    </w:Action>"
+    "  </e:Header>"
+    "  <e:Body>"
+    "    <d:Probe>"
+    "      <d:Types>dn:NetworkVideoTransmitter</d:Types>"
+    "    </d:Probe>"
+    "  </e:Body>"
+    "</e:Envelope>";
+
 
 void add_device(const char *ip, const char *service_url) {
     pthread_mutex_lock(&list_mutex);
@@ -63,7 +79,6 @@ void add_device(const char *ip, const char *service_url) {
 
 void extract_service_url(const char *response, char *service_url) {
     xmlDocPtr doc = xmlReadMemory(response, strlen(response), "noname.xml", NULL, 0);
-    printf("Response: %s\n", response);
     if (doc == NULL) {
         fprintf(stderr, "Failed to parse XML response\n");
         strcpy(service_url, "Unknown");
@@ -73,12 +88,9 @@ void extract_service_url(const char *response, char *service_url) {
     xmlNodePtr root = xmlDocGetRootElement(doc);
     xmlNodePtr node = root;
 
-    // Recursively search for the <d:XAddrs> tag within the correct namespace
+    // Recursively search for the <d:XAddrs> tag
     while (node) {
-        if (node->type == XML_ELEMENT_NODE && 
-            xmlStrcmp(node->name, (const xmlChar *)"XAddrs") == 0) {
-            
-            // Check if the node has a namespace prefix that needs to be accounted for
+        if (node->type == XML_ELEMENT_NODE && xmlStrcmp(node->name, (const xmlChar *)"XAddrs") == 0) {
             xmlChar *content = xmlNodeGetContent(node);
             if (content) {
                 strncpy(service_url, (const char *)content, 255);
@@ -87,13 +99,12 @@ void extract_service_url(const char *response, char *service_url) {
                 break;
             }
         }
-        node = node->next ? node->next : node->children;
+        node = (node->next) ? node->next : node->children;
     }
 
     xmlFreeDoc(doc);
     xmlCleanupParser();
 }
-
 
 void *listen_for_responses(void *arg) {
     int sock;
@@ -188,9 +199,6 @@ int main() {
 
     pthread_cancel(listener_thread);
     pthread_join(listener_thread, NULL);
-<<<<<<< HEAD
-=======
 
->>>>>>> db55bda (adding new code : for the onvif discovery service)
     return 0;
-}
+} 
