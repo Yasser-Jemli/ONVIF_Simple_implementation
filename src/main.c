@@ -7,13 +7,7 @@
 #include <libxml/parser.h>
 #include <libxml/tree.h>
 
-#define WS_DISCOVERY_ADDRESS "239.255.255.250"
-#define WS_DISCOVERY_PORT 3702
-
-// #define WS_DISCOVERY_ADDRESS    "127.0.0.1"
-
-// #define WS_DISCOVERY_ADDRESS "192.168.23.14"
-// #define WS_DISCOVERY_PORT 8000
+ #define WS_DISCOVERY_PORT 3702
 #define BUFFER_SIZE 4096
 
 typedef struct Device {
@@ -25,22 +19,7 @@ typedef struct Device {
 Device *device_list = NULL;
 pthread_mutex_t list_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-// const char *probe_message =
-//     "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
-//     "<s:Envelope xmlns:s=\"http://www.w3.org/2003/05/soap-envelope\" xmlns:a=\"http://schemas.xmlsoap.org/ws/2004/08/addressing\" xmlns:d=\"http://schemas.xmlsoap.org/ws/2005/04/discovery\">"
-//     "  <s:Header>"
-//     "    <a:Action>http://schemas.xmlsoap.org/ws/2005/04/discovery/Probe</a:Action>"
-//     "    <a:MessageID>uuid:12345678-1234-1234-1234-123456789012</a:MessageID>"
-//     "    <a:ReplyTo>"
-//     "      <a:Address>urn:schemas-xmlsoap-org:ws:2005:04:discovery</a:Address>"
-//     "    </a:ReplyTo>"
-//     "  </s:Header>"
-//     "  <s:Body>"
-//     "    <d:Probe/>"
-//     "  </s:Body>"
-//     "</s:Envelope>";
-
-
+// Probe message
 const char *probe_message =
     "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
     "<e:Envelope xmlns:e=\"http://www.w3.org/2003/05/soap-envelope\""
@@ -61,7 +40,6 @@ const char *probe_message =
     "  </e:Body>"
     "</e:Envelope>";
 
-
 void add_device(const char *ip, const char *service_url) {
     pthread_mutex_lock(&list_mutex);
     Device *new_device = (Device *)malloc(sizeof(Device));
@@ -77,6 +55,7 @@ void add_device(const char *ip, const char *service_url) {
     pthread_mutex_unlock(&list_mutex);
 }
 
+// Function to extract XAddrs from the XML response
 void extract_service_url(const char *response, char *service_url) {
     xmlDocPtr doc = xmlReadMemory(response, strlen(response), "noname.xml", NULL, 0);
     if (doc == NULL) {
@@ -88,7 +67,10 @@ void extract_service_url(const char *response, char *service_url) {
     xmlNodePtr root = xmlDocGetRootElement(doc);
     xmlNodePtr node = root;
 
-    // Recursively search for the <d:XAddrs> tag
+    // Define the namespace for d:XAddrs
+    const xmlChar *namespace = (const xmlChar *)"http://schemas.xmlsoap.org/ws/2005/04/discovery";
+
+    // Recursively search for the <d:XAddrs> tag with the correct namespace
     while (node) {
         if (node->type == XML_ELEMENT_NODE && xmlStrcmp(node->name, (const xmlChar *)"XAddrs") == 0) {
             xmlChar *content = xmlNodeGetContent(node);
@@ -136,6 +118,7 @@ void *listen_for_responses(void *arg) {
             buffer[recv_len] = '\0';
             char ip[INET_ADDRSTRLEN];
             inet_ntop(AF_INET, &client_addr.sin_addr, ip, sizeof(ip));
+            printf("Received message from %s:\n%s\n", ip, buffer);
             char service_url[256] = {0};
             extract_service_url(buffer, service_url);
             add_device(ip, service_url);
@@ -164,7 +147,8 @@ void send_discovery_probe() {
     if (sendto(sock, probe_message, strlen(probe_message), 0, (struct sockaddr *)&multicast_addr, sizeof(multicast_addr)) < 0) {
         perror("Failed to send discovery probe");
     } else {
-        printf("Discovery probe sent.\n");
+        printf("Discovery probe sent.\n\n");
+        printf("Probe sent is %s\n", probe_message);
     }
 
     close(sock);
@@ -201,4 +185,4 @@ int main() {
     pthread_join(listener_thread, NULL);
 
     return 0;
-} 
+}
