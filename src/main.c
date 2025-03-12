@@ -63,6 +63,7 @@ void add_device(const char *ip, const char *service_url) {
 
 void extract_service_url(const char *response, char *service_url) {
     xmlDocPtr doc = xmlReadMemory(response, strlen(response), "noname.xml", NULL, 0);
+    printf("Response: %s\n", response);
     if (doc == NULL) {
         fprintf(stderr, "Failed to parse XML response\n");
         strcpy(service_url, "Unknown");
@@ -92,6 +93,7 @@ void extract_service_url(const char *response, char *service_url) {
     xmlFreeDoc(doc);
     xmlCleanupParser();
 }
+
 
 void *listen_for_responses(void *arg) {
     int sock;
