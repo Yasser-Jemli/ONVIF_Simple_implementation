@@ -209,12 +209,12 @@ void *listen_for_responses(void *arg) {
                                 extract_profiles_supported(probe_match, profiles_supported);
                                 extract_capabilities(probe_match, capabilities);
                                 add_device(ip, service_url, firmware_version, sw_version, profiles_supported, capabilities);
-                                printf("Discovered ONVIF Device: %s\n", ip);
-                                printf("Service URL: %s\n", service_url);
-                                printf("Firmware Version: %s\n", firmware_version);
-                                printf("SW Version: %s\n", sw_version);
-                                printf("Profiles Supported: %s\n", profiles_supported);
-                                printf("Capabilities: %s\n", capabilities);
+                                // printf("Discovered ONVIF Device: %s\n", ip);
+                                // printf("Service URL: %s\n", service_url);
+                                // printf("Firmware Version: %s\n", firmware_version);
+                                // printf("SW Version: %s\n", sw_version);
+                                // printf("Profiles Supported: %s\n", profiles_supported);
+                                // printf("Capabilities: %s\n", capabilities);
                             }
                             probe_match = probe_match->next;
                         }
