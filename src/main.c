@@ -7,12 +7,17 @@
 #include <libxml/parser.h>
 #include <libxml/tree.h>
 
- #define WS_DISCOVERY_PORT 3702
+#define WS_DISCOVERY_PORT 3702
 #define BUFFER_SIZE 4096
+#define WS_DISCOVERY_ADDRESS "239.255.255.250"
 
 typedef struct Device {
     char ip[INET_ADDRSTRLEN];
     char service_url[256];
+    char firmware_version[256];
+    char sw_version[256];
+    char profiles_supported[256];
+    char capabilities[256];
     struct Device *next;
 } Device;
 
@@ -40,7 +45,72 @@ const char *probe_message =
     "  </e:Body>"
     "</e:Envelope>";
 
-void add_device(const char *ip, const char *service_url) {
+void extract_service_url(xmlNodePtr node, char *service_url) {
+    xmlNodePtr child = node->children;
+    while (child) {
+        if (child->type == XML_ELEMENT_NODE && xmlStrcmp(child->name, (const xmlChar *)"XAddrs") == 0) {
+            xmlChar *url = xmlNodeGetContent(child);
+            strncpy(service_url, (const char *)url, 256);
+            xmlFree(url);
+            return;
+        }
+        child = child->next;
+    }
+}
+
+void extract_firmware_version(xmlNodePtr node, char *firmware_version) {
+    xmlNodePtr child = node->children;
+    while (child) {
+        if (child->type == XML_ELEMENT_NODE && xmlStrcmp(child->name, (const xmlChar *)"FirmwareVersion") == 0) {
+            xmlChar *version = xmlNodeGetContent(child);
+            strncpy(firmware_version, (const char *)version, 256);
+            xmlFree(version);
+            return;
+        }
+        child = child->next;
+    }
+}
+
+void extract_sw_version(xmlNodePtr node, char *sw_version) {
+    xmlNodePtr child = node->children;
+    while (child) {
+        if (child->type == XML_ELEMENT_NODE && xmlStrcmp(child->name, (const xmlChar *)"SoftwareVersion") == 0) {
+            xmlChar *version = xmlNodeGetContent(child);
+            strncpy(sw_version, (const char *)version, 256);
+            xmlFree(version);
+            return;
+        }
+        child = child->next;
+    }
+}
+
+void extract_profiles_supported(xmlNodePtr node, char *profiles_supported) {
+    xmlNodePtr child = node->children;
+    while (child) {
+        if (child->type == XML_ELEMENT_NODE && xmlStrcmp(child->name, (const xmlChar *)"Scopes") == 0) {
+            xmlChar *scopes = xmlNodeGetContent(child);
+            strncpy(profiles_supported, (const char *)scopes, 256);
+            xmlFree(scopes);
+            return;
+        }
+        child = child->next;
+    }
+}
+
+void extract_capabilities(xmlNodePtr node, char *capabilities) {
+    xmlNodePtr child = node->children;
+    while (child) {
+        if (child->type == XML_ELEMENT_NODE && xmlStrcmp(child->name, (const xmlChar *)"Capabilities") == 0) {
+            xmlChar *caps = xmlNodeGetContent(child);
+            strncpy(capabilities, (const char *)caps, 256);
+            xmlFree(caps);
+            return;
+        }
+        child = child->next;
+    }
+}
+
+void add_device(const char *ip, const char *service_url, const char *firmware_version, const char *sw_version, const char *profiles_supported, const char *capabilities) {
     pthread_mutex_lock(&list_mutex);
     Device *new_device = (Device *)malloc(sizeof(Device));
     if (!new_device) {
@@ -50,47 +120,30 @@ void add_device(const char *ip, const char *service_url) {
     }
     strncpy(new_device->ip, ip, INET_ADDRSTRLEN);
     strncpy(new_device->service_url, service_url, 256);
+    strncpy(new_device->firmware_version, firmware_version, 256);
+    strncpy(new_device->sw_version, sw_version, 256);
+    strncpy(new_device->profiles_supported, profiles_supported, 256);
+    strncpy(new_device->capabilities, capabilities, 256);
     new_device->next = device_list;
     device_list = new_device;
     pthread_mutex_unlock(&list_mutex);
 }
 
-// Function to extract XAddrs from the XML response
-void extract_service_url(const char *response, char *service_url) {
-    xmlDocPtr doc = xmlReadMemory(response, strlen(response), "noname.xml", NULL, 0);
-    if (doc == NULL) {
-        fprintf(stderr, "Failed to parse XML response\n");
-        strcpy(service_url, "Unknown");
-        return;
+void print_device_table() {
+    pthread_mutex_lock(&list_mutex);
+    Device *current = device_list;
+    printf("\n%-20s %-40s %-20s %-20s %-20s %-20s\n", "IP Address", "Service URL", "Firmware Version", "SW Version", "Profiles Supported", "Capabilities");
+    printf("----------------------------------------------------------------------------------------------------------------------------\n");
+    while (current) {
+        printf("%-20s %-40s %-20s %-20s %-20s %-20s\n", current->ip, current->service_url, current->firmware_version, current->sw_version, current->profiles_supported, current->capabilities);
+        current = current->next;
     }
-
-    xmlNodePtr root = xmlDocGetRootElement(doc);
-    xmlNodePtr node = root;
-
-    // Define the namespace for d:XAddrs
-    const xmlChar *namespace = (const xmlChar *)"http://schemas.xmlsoap.org/ws/2005/04/discovery";
-
-    // Recursively search for the <d:XAddrs> tag with the correct namespace
-    while (node) {
-        if (node->type == XML_ELEMENT_NODE && xmlStrcmp(node->name, (const xmlChar *)"XAddrs") == 0) {
-            xmlChar *content = xmlNodeGetContent(node);
-            if (content) {
-                strncpy(service_url, (const char *)content, 255);
-                service_url[255] = '\0'; // Ensure null termination
-                xmlFree(content);
-                break;
-            }
-        }
-        node = (node->next) ? node->next : node->children;
-    }
-
-    xmlFreeDoc(doc);
-    xmlCleanupParser();
+    pthread_mutex_unlock(&list_mutex);
 }
 
 void *listen_for_responses(void *arg) {
     int sock;
-    struct sockaddr_in server_addr;
+    struct sockaddr_in recv_addr;
     char buffer[BUFFER_SIZE];
 
     sock = socket(AF_INET, SOCK_DGRAM, 0);
@@ -99,30 +152,79 @@ void *listen_for_responses(void *arg) {
         return NULL;
     }
 
-    memset(&server_addr, 0, sizeof(server_addr));
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    server_addr.sin_port = htons(WS_DISCOVERY_PORT);
+    // Enable address reuse
+    int optval = 1;
+    setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
 
-    if (bind(sock, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+    memset(&recv_addr, 0, sizeof(recv_addr));
+    recv_addr.sin_family = AF_INET;
+    recv_addr.sin_port = htons(WS_DISCOVERY_PORT);
+    recv_addr.sin_addr.s_addr = INADDR_ANY;
+
+    if (bind(sock, (struct sockaddr *)&recv_addr, sizeof(recv_addr)) < 0) {
         perror("Bind failed");
         close(sock);
         return NULL;
     }
 
     while (1) {
-        struct sockaddr_in client_addr;
-        socklen_t client_len = sizeof(client_addr);
-        int recv_len = recvfrom(sock, buffer, BUFFER_SIZE, 0, (struct sockaddr *)&client_addr, &client_len);
+        struct sockaddr_in sender_addr;
+        socklen_t addr_len = sizeof(sender_addr);
+        ssize_t recv_len = recvfrom(sock, buffer, sizeof(buffer) - 1, 0, 
+                                    (struct sockaddr *)&sender_addr, &addr_len);
         if (recv_len > 0) {
             buffer[recv_len] = '\0';
             char ip[INET_ADDRSTRLEN];
-            inet_ntop(AF_INET, &client_addr.sin_addr, ip, sizeof(ip));
+            inet_ntop(AF_INET, &sender_addr.sin_addr, ip, sizeof(ip));
             printf("Received message from %s:\n%s\n", ip, buffer);
-            char service_url[256] = {0};
-            extract_service_url(buffer, service_url);
-            add_device(ip, service_url);
-            printf("Discovered ONVIF Device: %s (%s)\n", ip, service_url);
+
+            // Parse the XML response to handle multiple ProbeMatch messages
+            xmlDocPtr doc = xmlReadMemory(buffer, recv_len, "noname.xml", NULL, 0);
+            if (doc == NULL) {
+                fprintf(stderr, "Failed to parse XML response\n");
+                continue;
+            }
+
+            xmlNodePtr root = xmlDocGetRootElement(doc);
+            xmlNodePtr body = root->children;
+            while (body && (body->type != XML_ELEMENT_NODE || xmlStrcmp(body->name, (const xmlChar *)"Body") != 0)) {
+                body = body->next;
+            }
+
+            if (body) {
+                xmlNodePtr probe_matches = body->children;
+                while (probe_matches) {
+                    if (probe_matches->type == XML_ELEMENT_NODE && xmlStrcmp(probe_matches->name, (const xmlChar *)"ProbeMatches") == 0) {
+                        xmlNodePtr probe_match = probe_matches->children;
+                        while (probe_match) {
+                            if (probe_match->type == XML_ELEMENT_NODE && xmlStrcmp(probe_match->name, (const xmlChar *)"ProbeMatch") == 0) {
+                                char service_url[256] = {0};
+                                char firmware_version[256] = {0};
+                                char sw_version[256] = {0};
+                                char profiles_supported[256] = {0};
+                                char capabilities[256] = {0};
+                                extract_service_url(probe_match, service_url);
+                                extract_firmware_version(probe_match, firmware_version);
+                                extract_sw_version(probe_match, sw_version);
+                                extract_profiles_supported(probe_match, profiles_supported);
+                                extract_capabilities(probe_match, capabilities);
+                                add_device(ip, service_url, firmware_version, sw_version, profiles_supported, capabilities);
+                                printf("Discovered ONVIF Device: %s\n", ip);
+                                printf("Service URL: %s\n", service_url);
+                                printf("Firmware Version: %s\n", firmware_version);
+                                printf("SW Version: %s\n", sw_version);
+                                printf("Profiles Supported: %s\n", profiles_supported);
+                                printf("Capabilities: %s\n", capabilities);
+                            }
+                            probe_match = probe_match->next;
+                        }
+                    }
+                    probe_matches = probe_matches->next;
+                }
+            }
+
+            xmlFreeDoc(doc);
+            xmlCleanupParser();
         }
     }
     close(sock);
@@ -131,37 +233,42 @@ void *listen_for_responses(void *arg) {
 
 void send_discovery_probe() {
     int sock;
-    struct sockaddr_in multicast_addr;
-    
+    struct sockaddr_in broadcast_addr;
+
     sock = socket(AF_INET, SOCK_DGRAM, 0);
     if (sock < 0) {
         perror("Socket creation failed");
         return;
     }
 
-    memset(&multicast_addr, 0, sizeof(multicast_addr));
-    multicast_addr.sin_family = AF_INET;
-    multicast_addr.sin_port = htons(WS_DISCOVERY_PORT);
-    multicast_addr.sin_addr.s_addr = inet_addr(WS_DISCOVERY_ADDRESS);
+    // Enable broadcast
+    int optval = 1;
+    setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &optval, sizeof(optval));
 
-    if (sendto(sock, probe_message, strlen(probe_message), 0, (struct sockaddr *)&multicast_addr, sizeof(multicast_addr)) < 0) {
+    memset(&broadcast_addr, 0, sizeof(broadcast_addr));
+    broadcast_addr.sin_family = AF_INET;
+    broadcast_addr.sin_port = htons(WS_DISCOVERY_PORT);
+    inet_pton(AF_INET, WS_DISCOVERY_ADDRESS, &broadcast_addr.sin_addr);
+
+    if (sendto(sock, probe_message, strlen(probe_message), 0, 
+               (struct sockaddr *)&broadcast_addr, sizeof(broadcast_addr)) < 0) {
         perror("Failed to send discovery probe");
     } else {
         printf("Discovery probe sent.\n\n");
-        printf("Probe sent is %s\n", probe_message);
     }
 
     close(sock);
 }
 
-void list_devices() {
+void cleanup_devices() {
     pthread_mutex_lock(&list_mutex);
     Device *current = device_list;
-    printf("\n--- Available ONVIF Devices ---\n");
     while (current) {
-        printf("IP: %s, Service URL: %s\n", current->ip, current->service_url);
-        current = current->next;
+        Device *next = current->next;
+        free(current);
+        current = next;
     }
+    device_list = NULL;
     pthread_mutex_unlock(&list_mutex);
 }
 
@@ -177,12 +284,13 @@ int main() {
     getchar();
     send_discovery_probe();
 
-    printf("\nPress ENTER to list discovered devices...\n");
-    getchar();
-    list_devices();
+    sleep(5);  // Give time to receive responses
 
     pthread_cancel(listener_thread);
     pthread_join(listener_thread, NULL);
+
+    print_device_table();  // Print the table of discovered devices
+    cleanup_devices();  // Free allocated memory
 
     return 0;
 }
