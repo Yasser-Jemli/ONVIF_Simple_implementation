@@ -25,3 +25,10 @@ the tool used for Camera ONVIF for simulation is --> https://www.happytimesoft.c
 
 
 lib INSTALLATION : sudo apt install libxml2 libxml2-dev
+
+
+
+
+for Onvid_profiles.c compile with : gcc -o capture_rtsp capture_rtsp.c -lavformat -lavcodec -lavutil
+
+lib installation : sudo apt-get install libavformat-dev libavcodec-dev libavutil-dev 
