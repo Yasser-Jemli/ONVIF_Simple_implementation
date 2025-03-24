@@ -4,6 +4,7 @@
 
 #define URL "https://example.com/"
 
+
 struct memory {
     char *memory;
     size_t size;
@@ -24,7 +25,7 @@ int main(void){
     
     if (curl_handler) {
         curl_easy_setopt(curl_handler, CURLOPT_URL, URL);
-        curl_easy_setopt(curl_handler, CURLOPT_WRITEFUNCTION
+        curl_easy_setopt(curl_handler, CURLOPT_WRITEFUNCTION , write_callback);
         res = curl_easy_perform(curl_handler);
         if (res != CURLE_OK) {
             fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
